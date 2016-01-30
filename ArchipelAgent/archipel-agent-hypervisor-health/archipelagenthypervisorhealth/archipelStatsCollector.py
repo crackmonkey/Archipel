@@ -25,6 +25,7 @@ import sqlite3
 import subprocess
 import time
 import json
+from os import statvfs
 from threading import Thread
 
 from archipelcore.utils import log
@@ -221,17 +222,29 @@ class TNThreadedHealthCollector (Thread):
         @rtype: dict
         @return: dictionnary containing the informations
         """
-        output  = subprocess.Popen(["df", "-P", "-x", "devfs", "-x", "devtmpfs", "-x", "tmpfs"], stdout=subprocess.PIPE).communicate()[0]
         listed  = []
         ret     = []
-        out     = output.split("\n")[1:-1]
-        for l in out:
-            cell = l.split()
-            if cell[5] in listed:
-                continue
-            ret.append({"partition": cell[0], "blocks": cell[1], "used": int(cell[2]) * 1024, "available": int(cell[3]) * 1024, "capacity": cell[4], "mount": cell[5]})
-            listed.append(cell[5])
-        return ret
+	f = open('/proc/mounts')
+	for mount in f:
+		(mdev,mpath,mfs,moptions,msomething,mpass) = mount.split()
+		if (mdev in listed):
+			continue
+		if (mfs in ('devfs', 'devtmpfs', 'tmpfs')):
+			continue
+		vfs = statvfs(mpath)
+		if (vfs.f_blocks == 0): # 0-sized device, ignore
+			continue
+		ret.append({
+			"partition": mdev,
+			"blocks": (vfs.f_blocks*vfs.f_bsize)/1024,
+			"used": (vfs.f_blocks-vfs.f_bfree)*vfs.f_bsize,
+			"available": vfs.f_bfree*vfs.f_bsize,
+			"capacity": '{:d}%'.format(100-(100*vfs.f_bfree/vfs.f_blocks)),
+			"mount": mpath
+			})
+		listed.append(mdev)
+	f.close()
+	return ret
 
     def get_disk_total(self):
         """
@@ -239,7 +252,8 @@ class TNThreadedHealthCollector (Thread):
         @rtype: dict
         @return: dictionnary containing the informations
         """
-        out = subprocess.Popen(["df", "--total", "-P", "-x", "devfs", "-x", "devtmpfs", "-x", "tmpfs"], stdout=subprocess.PIPE).communicate()[0].split("\n")
+	out = ""
+	disk_total = [0,0,0,0,0]
         for line in out:
             line = line.split()
             if line[0] == "total":
