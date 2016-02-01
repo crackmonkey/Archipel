@@ -234,7 +234,7 @@ class TNThreadedHealthCollector (Thread):
 		vfs = statvfs(mpath)
 		if (vfs.f_blocks == 0): # 0-sized device, ignore
 			continue
-		ret.append({
+            	ret.append({
 			"partition": mdev,
 			"blocks": (vfs.f_blocks*vfs.f_bsize)/1024,
 			"used": (vfs.f_blocks-vfs.f_bfree)*vfs.f_bsize,
@@ -252,14 +252,16 @@ class TNThreadedHealthCollector (Thread):
         @rtype: dict
         @return: dictionnary containing the informations
         """
-	out = ""
-	disk_total = [0,0,0,0,0]
-        for line in out:
-            line = line.split()
-            if line[0] == "total":
-                disk_total = line
-                break
-        return {"used": disk_total[2], "available": disk_total[3], "capacity": disk_total[4]}
+	t_used = 0
+	t_available = 0
+	t_capacity = 0
+	disks = self.get_disk_stats()
+	for disk in disks:
+		t_used += disk["used"]
+		t_available += disk["available"]
+		t_capacity += disk["blocks"] * 1024
+
+        return {"used": t_used, "available": t_available, "capacity": "{:d}%".format(100*t_used/t_capacity)}
 
     def get_network_stats(self):
         """
